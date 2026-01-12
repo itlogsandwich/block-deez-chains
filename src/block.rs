@@ -1,15 +1,17 @@
+use std::fmt;
 use serde::{ Serialize, Deserialize };
 use chrono::Utc;
 use sha2::{Sha256, Digest};
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Block
 {
-    index: u64,
-    timestamp: i64,
-    data: String,
-    previous_hash: String,
-    hash: String,
-    nonce: u64,
+    pub index: u64,
+    pub timestamp: i64,
+    pub data: String,
+    pub previous_hash: String,
+    pub hash: String,
+    pub nonce: u64,
 }
 
 pub struct BlockState
@@ -17,10 +19,17 @@ pub struct BlockState
     pub blocks: Vec<Block>,
 }
 
+impl std::fmt::Display for Block
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
+    {
+        write!(f, "Index: {}\nTimestamp: {}\nData: {}\nPrevious Hash: {}\nCurrent Hash: {} \n", self.index, self.timestamp, self.data, self.previous_hash,self.hash)
+    }
+}
+
 impl BlockState
 {
-
-    fn new () -> Self
+    pub fn new () -> Self
     {
         Self
         {
@@ -28,7 +37,7 @@ impl BlockState
         }
     }
 
-    fn create_genesis_block(&mut self)
+    pub fn create_genesis_block(&mut self)
     {
         let genesis_block = Block
         {
@@ -36,14 +45,14 @@ impl BlockState
             timestamp: Utc::now().timestamp(),
             data: String::from("DAPProptech is the way"),
             previous_hash: String::from("0"),
-            hash: String::from("0000000000000000000000000000000000000000000000000000000000000000000000"),
+            hash: String::from("000000000000000000000000000000000000000000000000000000000000000"),
             nonce: 3694,
         };
     
         self.blocks.push(genesis_block)
     }
 
-    fn add_block(&mut self, index: u64, data: String, previous_hash: String)
+    pub fn add_block(&mut self, index: u64, data: String, previous_hash: String)
     {
         let timestamp = Utc::now().timestamp();
         let nonce = 3694;
@@ -62,7 +71,6 @@ impl BlockState
         self.blocks.push(block)
     }
 }
-
 fn calculate_hash(index: u64, data: &str, previous_hash: &str, nonce: u64) -> String
 {
     let mut hasher = Sha256::new();
