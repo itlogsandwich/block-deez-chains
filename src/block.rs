@@ -2,11 +2,12 @@ use std::fmt;
 use serde::{ Serialize, Deserialize };
 use chrono::Utc;
 use sha2::{Sha256, Digest};
+use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Block
 {
-    pub index: u64,
+    pub index: Uuid,
     pub timestamp: i64,
     pub data: String,
     pub previous_hash: String,
@@ -14,6 +15,7 @@ pub struct Block
     pub nonce: u64,
 }
 
+const DEFAULT_PREFIX: &str = "6767";
 pub struct BlockState
 {
     pub blocks: Vec<Block>,
@@ -41,37 +43,38 @@ impl BlockState
     {
         let genesis_block = Block
         {
-            index: 0,
+            index: Uuid::new_v4(),
             timestamp: Utc::now().timestamp(),
             data: String::from("DAPProptech is the way"),
             previous_hash: String::from("0"),
-            hash: String::from("000000000000000000000000000000000000000000000000000000000000000"),
+            hash: DEFAULT_PREFIX.to_owned() + "00000000000000000000000000000000000000000000000000000000000",
             nonce: 3694,
         };
     
         self.blocks.push(genesis_block)
     }
 
-    pub fn add_block(&mut self, index: u64, data: String, previous_hash: String)
+    pub fn add_block(&mut self, index: Uuid, data: String)
     {
+        let previous_hash = &self.blocks.last().unwrap().hash;
         let timestamp = Utc::now().timestamp();
         let nonce = 3694;
-        let hash = calculate_hash(index, &data, &previous_hash, nonce);
+        let hash = calculate_hash(index, &data, previous_hash, nonce);
 
         let block = Block
         {
             index,
             timestamp,
             data,
-            previous_hash,
+            previous_hash: previous_hash.to_string(),
             hash,
             nonce,
         };
-
+        
         self.blocks.push(block)
     }
 }
-fn calculate_hash(index: u64, data: &str, previous_hash: &str, nonce: u64) -> String
+fn calculate_hash(index: Uuid, data: &str, previous_hash: &str, nonce: u64) -> String
 {
     let mut hasher = Sha256::new();
 
@@ -79,5 +82,7 @@ fn calculate_hash(index: u64, data: &str, previous_hash: &str, nonce: u64) -> St
     hasher.update(val);
     let hash = hasher.finalize();
 
-    hex::encode(hash)
+    let hash = hex::encode(hash);
+
+    DEFAULT_PREFIX.to_owned() + &hash
 }

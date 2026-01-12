@@ -8,7 +8,9 @@ fn main()
 
     chain.create_genesis_block();
  
-    chain.add_block(1, String::from("BLOCK CHAIN IS COOL"), chain.blocks[0].hash.to_string());
+    chain.add_block(uuid::Uuid::new_v4(),String::from("BLOCKCHAIN IS COOL"));
+
+    chain.add_block(uuid::Uuid::new_v4(),String::from("SINULOG HACKATHON 2025!"));
 
     for i in chain.blocks
     {
