@@ -1,8 +1,13 @@
+use crate::error::Error;
 use std::fmt;
 use serde::{ Serialize, Deserialize };
 use chrono::Utc;
 use sha2::{Sha256, Digest};
 use uuid::Uuid;
+
+const DEFAULT_PREFIX: &str = "6767";
+
+type BlockResult<T> = Result<T, Error>;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Block
@@ -15,18 +20,17 @@ pub struct Block
     pub nonce: u64,
 }
 
-const DEFAULT_PREFIX: &str = "6767";
-pub struct BlockState
-{
-    pub blocks: Vec<Block>,
-}
-
 impl std::fmt::Display for Block
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result
     {
         write!(f, "Index: {}\nTimestamp: {}\nData: {}\nPrevious Hash: {}\nCurrent Hash: {} \n", self.index, self.timestamp, self.data, self.previous_hash,self.hash)
     }
+}
+
+pub struct BlockState
+{
+    pub blocks: Vec<Block>,
 }
 
 impl BlockState
@@ -54,9 +58,17 @@ impl BlockState
         self.blocks.push(genesis_block)
     }
 
-    pub fn add_block(&mut self, index: Uuid, data: String)
+    pub fn add_block(&mut self, index: Uuid, data: String) -> BlockResult<()>
     {
+        if self.blocks.last().is_none() 
+        {
+            return Err(Error::OutOfBounds);
+        }
+
         let previous_hash = &self.blocks.last().unwrap().hash;
+
+        self.compare_hash(previous_hash)?;
+
         let timestamp = Utc::now().timestamp();
         let nonce = 3694;
         let hash = calculate_hash(index, &data, previous_hash, nonce);
@@ -71,9 +83,22 @@ impl BlockState
             nonce,
         };
         
-        self.blocks.push(block)
+        self.blocks.push(block);
+
+        Ok(())
+    }
+
+    pub fn compare_hash(&self, hash: &str) -> BlockResult<()>
+    {
+        if self.blocks.last().unwrap().hash != hash
+        {
+            return Err(Error::InvalidHash);
+        }
+
+        Ok(())
     }
 }
+
 fn calculate_hash(index: Uuid, data: &str, previous_hash: &str, nonce: u64) -> String
 {
     let mut hasher = Sha256::new();
