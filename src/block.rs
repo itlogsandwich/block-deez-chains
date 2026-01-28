@@ -58,20 +58,18 @@ impl BlockState
         self.blocks.push(genesis_block)
     }
 
-    pub fn add_block(&mut self, index: Uuid, data: String) -> BlockResult<()>
+    pub fn add_block(&mut self, data: String, nonce: u64, hash: String) -> BlockResult<()>
     {
         if self.blocks.last().is_none() 
         {
             return Err(Error::OutOfBounds);
         }
-
+        let index = Uuid::new_v4();
         let previous_hash = &self.blocks.last().unwrap().hash;
 
         self.compare_hash(previous_hash)?;
 
         let timestamp = Utc::now().timestamp();
-        let nonce = 3694;
-        let hash = calculate_hash(index, &data, previous_hash, nonce);
 
         let block = Block
         {
@@ -97,6 +95,33 @@ impl BlockState
 
         Ok(())
     }
+
+    pub fn mine_block(&self, index: Uuid, data: &str, previous_hash: &str) -> (u64, String)
+    {
+        println!("Mining block...");
+        let mut nonce = 0;
+
+        loop
+        {
+            if nonce % 10000 == 0
+            {
+                println!("Nonce: {nonce}");
+            }
+
+            let hash = calculate_hash(index, data, previous_hash, nonce);
+            if hash.starts_with(DEFAULT_PREFIX)
+            {
+                println!("
+                Nonce: {nonce},
+                Hash: {hash},
+                ");
+
+                return (nonce, hash);
+            }            
+            println!("{nonce}");
+            nonce += 1;
+        }
+    }
 }
 
 fn calculate_hash(index: Uuid, data: &str, previous_hash: &str, nonce: u64) -> String
@@ -109,5 +134,5 @@ fn calculate_hash(index: Uuid, data: &str, previous_hash: &str, nonce: u64) -> S
 
     let hash = hex::encode(hash);
 
-    DEFAULT_PREFIX.to_owned() + &hash
+    hash
 }

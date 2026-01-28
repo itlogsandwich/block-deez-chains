@@ -9,10 +9,12 @@ fn main() -> Result<(), Error>
     let mut chain = BlockState::new();
 
     chain.create_genesis_block();
- 
-    chain.add_block(uuid::Uuid::new_v4(),String::from("BLOCKCHAIN IS COOL"))?;
 
-    chain.add_block(uuid::Uuid::new_v4(),String::from("SINULOG HACKATHON 2025!"))?;
+    let mined = chain.mine_block(chain.blocks.last().unwrap().index, chain.blocks.last().unwrap().previous_hash.as_str(), chain.blocks.last().unwrap().hash.as_str());
+    chain.add_block(String::from("BLOCKCHAIN IS COOL"), mined.0, mined.1)?;
+
+    let mined = chain.mine_block(chain.blocks.last().unwrap().index, chain.blocks.last().unwrap().previous_hash.as_str(), chain.blocks.last().unwrap().hash.as_str());
+    chain.add_block(String::from("SINULOG HACKATHON 2025!"), mined.0, mined.1)?;
 
     for i in chain.blocks
     {
