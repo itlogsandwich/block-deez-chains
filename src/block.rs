@@ -118,7 +118,6 @@ impl BlockState
 
                 return (nonce, hash);
             }            
-            println!("{nonce}");
             nonce += 1;
         }
     }
@@ -132,7 +131,5 @@ fn calculate_hash(index: Uuid, data: &str, previous_hash: &str, nonce: u64) -> S
     hasher.update(val);
     let hash = hasher.finalize();
 
-    let hash = hex::encode(hash);
-
-    hash
+    hex::encode(hash)
 }
