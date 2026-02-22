@@ -5,11 +5,10 @@ use libp2p::{ noise,
     gossipsub,
     Multiaddr,
     futures::StreamExt,
-    gossipsub::{Event, MessageAuthenticity, IdentTopic},
+    gossipsub::{MessageAuthenticity, IdentTopic},
     swarm::SwarmEvent,
 };
 use tokio::sync::mpsc;
-use std::hash as StdHasher;
 
 use crate::block::{BlockState, mine_block};
 use crate::error::Error;

@@ -1,7 +1,6 @@
 use crate::error::Error;
 use std::fmt;
 use serde::{ Serialize, Deserialize };
-use serde_json::json;
 use chrono::Utc;
 use sha2::{Sha256, Digest};
 use uuid::Uuid;
@@ -10,7 +9,7 @@ const DEFAULT_PREFIX: &str = "6767";
 
 type BlockResult<T> = Result<T, Error>;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Block
 {
     pub index: Uuid,
@@ -112,7 +111,7 @@ pub fn check_prefix(index: Uuid, data: &str, hash: &str, previous_hash: &str, no
     }
     else
     {
-        return Err(Error::InvalidPrefix);
+        Err(Error::InvalidPrefix)
     }
 }
 
