@@ -1,15 +1,19 @@
 use crate::block::BlockState;
 use crate::error::Error;
+use crate::p2p::AppBehaviour;
+
 mod block;
 mod error;
+mod p2p;
 
-use libp2p::{
-    noise,
+use libp2p::{ noise,
     tcp,
     yamux,
     ping,
+    gossipsub,
     Multiaddr,
     futures::StreamExt,
+    gossipsub::MessageAuthenticity
 };
 
 #[tokio::main]
@@ -22,7 +26,15 @@ async fn main() -> Result<(), Error>
             noise::Config::new,
             yamux::Config::default,
         ).unwrap()
-        .with_behaviour(|_| ping::Behaviour::default())?
+        .with_behaviour(|key| 
+        {
+            let gossipsub = gossipsub::Behaviour::new(MessageAuthenticity::Signed(key.clone()),gossipsub::Config::default()).expect("Gossipsub failed");
+            AppBehaviour
+            {
+                gossipsub,
+                ping: ping::Behaviour::default(),
+            }
+        })?
         .with_swarm_config(|cfg| 
         {
             cfg.with_idle_connection_timeout(std::time::Duration::from_secs(u64::MAX))
