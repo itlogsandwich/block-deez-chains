@@ -9,8 +9,9 @@ use libp2p::{ noise,
     swarm::SwarmEvent,
 };
 use tokio::sync::mpsc;
+use std::hash as StdHasher;
 
-use crate::block::BlockState;
+use crate::block::{BlockState, mine_block};
 use crate::error::Error;
 use crate::p2p::AppBehaviour;
 use crate::p2p::Event as MainEvent;
@@ -48,8 +49,6 @@ async fn main() -> Result<(), Error>
     let topic = IdentTopic::new("Blockchain");
     swarm.behaviour_mut().gossipsub.subscribe(&topic).expect("Topic subscription failed");
 
-
-
     swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
 
     if let Some(addr) = std::env::args().nth(1) 
@@ -64,16 +63,14 @@ async fn main() -> Result<(), Error>
 
     chain.create_genesis_block();
 
-    let mined = chain.mine_block(chain.blocks.last().unwrap().index, chain.blocks.last().unwrap().previous_hash.as_str(), chain.blocks.last().unwrap().hash.as_str());
-    chain.add_block(String::from("BLOCKCHAIN IS COOL"), mined.0, mined.1)?;
-
-    let mined = chain.mine_block(chain.blocks.last().unwrap().index, chain.blocks.last().unwrap().previous_hash.as_str(), chain.blocks.last().unwrap().hash.as_str());
-    chain.add_block(String::from("SINULOG HACKATHON 2025!"), mined.0, mined.1)?;
-
-    for i in chain.blocks
+    let (tx, mut rx) = mpsc::channel::<Block>(100);
+    
+    let miner_tx = tx.clone();
+    let last_block = chain.blocks.last().unwrap().clone();
+    
+    tokio::task::spawn_blocking(move || 
     {
-        println!("Blockchain {i}")
-    }
+    });
 
     loop
     {
@@ -102,6 +99,10 @@ async fn main() -> Result<(), Error>
 
                     _ => {}
                 }
+            },
+            Some(new_block) = rx.recv() =>
+            {
+                println!("Miner has found a new block! {:?}", &new_block.hash);
             }
         }
     }

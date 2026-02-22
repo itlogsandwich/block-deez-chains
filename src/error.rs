@@ -3,6 +3,7 @@ pub enum Error
 {
     OutOfBounds,
     InvalidHash,
+    InvalidPrefix,
     NetworkInfallible(String),
     NetworkMultiaddr(String),
     NetworkTransport(String),
