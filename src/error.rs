@@ -4,6 +4,7 @@ pub enum Error
     OutOfBounds,
     InvalidHash,
     InvalidPrefix,
+    FailedSerialization,
     NetworkInfallible(String),
     NetworkMultiaddr(String),
     NetworkTransport(String),
@@ -54,6 +55,14 @@ impl From<libp2p::multiaddr::Error> for Error
     fn from(err: libp2p::multiaddr::Error) -> Self 
     {
         Self::NetworkMultiaddr(err.to_string())
+    }
+}
+
+impl From<serde_json::Error> for Error
+{
+    fn from(_err: serde_json::Error) -> Self
+    {
+        Self::FailedSerialization
     }
 }
 impl std::error::Error for Error{}

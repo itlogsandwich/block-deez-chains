@@ -9,12 +9,13 @@ use libp2p::{ noise,
     swarm::SwarmEvent,
 };
 use tokio::sync::mpsc;
+use uuid::Uuid;
+use chrono::Utc;
 
-use crate::block::{BlockState, mine_block};
+use crate::block::{BlockState, Block, BlockCandidate, mine_block};
 use crate::error::Error;
 use crate::p2p::AppBehaviour;
 use crate::p2p::Event as MainEvent;
-use crate::block::Block;
 
 mod block;
 mod error;
@@ -69,6 +70,16 @@ async fn main() -> Result<(), Error>
     
     tokio::task::spawn_blocking(move || 
     {
+            let candidate = BlockCandidate
+            {
+                index: Uuid::new_v4(),
+                timestamp: Utc::now().timestamp(),
+                data: String::from("Test"),
+                previous_hash: last_block.hash, 
+            };
+            
+            let mined = mine_block(candidate);
+            _ = miner_tx.blocking_send(mined);
     });
 
     loop
@@ -83,7 +94,12 @@ async fn main() -> Result<(), Error>
                     {
                         if let Ok(block) = serde_json::from_slice(&message.data)
                         {
-                            let _incoming_block: Block = block;
+                            let incoming_block: Block = block;
+                            
+                            if let Err(e) = chain.add_block(incoming_block)
+                            {
+                                println!("An error has occured! {e}");
+                            }
                         }
                         else
                         {
@@ -102,6 +118,23 @@ async fn main() -> Result<(), Error>
             Some(new_block) = rx.recv() =>
             {
                 println!("Miner has found a new block! {:?}", &new_block.hash);
+                
+                if let Ok(serialized_block) = serde_json::to_vec(&new_block)
+                {
+                    match chain.add_block(new_block)
+                    {
+                        Ok(()) =>
+                        {
+                            println!("Block found! Adding...");
+                            _ = swarm.behaviour_mut().gossipsub.publish(topic.hash(), serialized_block);
+                        }
+                        Err(e) => println!("An error has occured! {e}"),
+                    }
+                }
+                else
+                {
+                    println!("Data Serialization failed...");
+                }
             }
         }
     }
