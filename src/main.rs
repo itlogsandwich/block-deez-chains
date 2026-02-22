@@ -1,11 +1,3 @@
-use crate::block::BlockState;
-use crate::error::Error;
-use crate::p2p::AppBehaviour;
-
-mod block;
-mod error;
-mod p2p;
-
 use libp2p::{ noise,
     tcp,
     yamux,
@@ -13,8 +5,20 @@ use libp2p::{ noise,
     gossipsub,
     Multiaddr,
     futures::StreamExt,
-    gossipsub::MessageAuthenticity
+    gossipsub::{Event, MessageAuthenticity, IdentTopic},
+    swarm::SwarmEvent,
 };
+use tokio::sync::mpsc;
+
+use crate::block::BlockState;
+use crate::error::Error;
+use crate::p2p::AppBehaviour;
+use crate::p2p::Event as MainEvent;
+use crate::block::Block;
+
+mod block;
+mod error;
+mod p2p;
 
 #[tokio::main]
 async fn main() -> Result<(), Error>
@@ -40,6 +44,11 @@ async fn main() -> Result<(), Error>
             cfg.with_idle_connection_timeout(std::time::Duration::from_secs(u64::MAX))
         })
         .build();
+    
+    let topic = IdentTopic::new("Blockchain");
+    swarm.behaviour_mut().gossipsub.subscribe(&topic).expect("Topic subscription failed");
+
+
 
     swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
 
@@ -68,19 +77,33 @@ async fn main() -> Result<(), Error>
 
     loop
     {
-        match swarm.select_next_some().await
+        tokio::select!
         {
-            libp2p::swarm::SwarmEvent::NewListenAddr { address, .. } => 
+            event = swarm.select_next_some() =>
             {
-                println!("Listening on {address}")
-            },
-            libp2p::swarm::SwarmEvent::Behaviour(event) =>
-            {
-                println!("Event: {event:?}")
-            },
-            _ => {}
+                match event
+                {
+                    SwarmEvent::Behaviour(MainEvent::Gossipsub(gossipsub::Event::Message{ message,.. })) => 
+                    {
+                        if let Ok(block) = serde_json::from_slice(&message.data)
+                        {
+                            let _incoming_block: Block = block;
+                        }
+                        else
+                        {
+                            println!("Data lost in transmission...");
+                        }
+                        println!("Message Received! {:?}", message.data);
+                    },
+                    SwarmEvent::Behaviour(MainEvent::Ping(ping_event)) => 
+                    { 
+                        println!("Pinging! {:?}", ping_event); 
+                    },
+
+                    _ => {}
+                }
+            }
         }
     }
-
     Ok(())
 }
