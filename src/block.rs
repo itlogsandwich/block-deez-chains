@@ -4,6 +4,8 @@ use serde::{ Serialize, Deserialize };
 use chrono::Utc;
 use sha2::{Sha256, Digest};
 use uuid::Uuid;
+use tokio::sync::mpsc;
+use std::sync::{Arc, atomic::AtomicBool, atomic::Ordering};
 
 const DEFAULT_PREFIX: &str = "6767";
 
@@ -115,16 +117,18 @@ pub fn check_prefix(index: Uuid, data: &str, hash: &str, previous_hash: &str, no
     }
 }
 
-pub fn mine_block(block_candidate: BlockCandidate) -> Block
+pub fn mine_block(block_candidate: BlockCandidate, stop_signal: Arc<AtomicBool>) -> Option<Block>
 {
     println!("Mining block...");
     let mut nonce = 0;
 
     loop
     {
-        if nonce % 10000 == 0
+        if nonce % 10000 == 0 && stop_signal.load(Ordering::Relaxed)
         {
             println!("Nonce: {nonce}");
+            return None;
+            
         }
 
         let hash = calculate_hash(block_candidate.index, &block_candidate.data, &block_candidate.previous_hash, nonce);
@@ -135,7 +139,7 @@ pub fn mine_block(block_candidate: BlockCandidate) -> Block
             Hash: {hash},
             ");
 
-            return Block
+            return Some(Block
             {
                 index: block_candidate.index,
                 timestamp: block_candidate.timestamp,
@@ -143,10 +147,36 @@ pub fn mine_block(block_candidate: BlockCandidate) -> Block
                 previous_hash: block_candidate.previous_hash.to_string(),
                 hash,
                 nonce,
-            }
+            });
         }            
         nonce += 1;
     }
+}
+
+pub fn mine_trigger(chain: &BlockState, tx: mpsc::Sender<Block>, stop_signal: Arc<AtomicBool>)
+{
+    let miner_tx = tx.clone();
+    let last_block = chain.blocks.last().unwrap().clone();
+
+    tokio::task::spawn_blocking(move || 
+    {
+            let candidate = BlockCandidate
+            {
+                index: Uuid::new_v4(),
+                timestamp: Utc::now().timestamp(),
+                data: String::from("Test"),
+                previous_hash: last_block.hash, 
+            };
+            
+            if let Some(mined) = mine_block(candidate, stop_signal)
+            {
+                _ = miner_tx.blocking_send(mined);
+            }
+            else
+            {
+                println!("No block has been mined!");
+            }
+    });
 }
 
 fn calculate_hash(index: Uuid, data: &str, previous_hash: &str, nonce: u64) -> String
@@ -159,3 +189,4 @@ fn calculate_hash(index: Uuid, data: &str, previous_hash: &str, nonce: u64) -> S
 
     hex::encode(hash)
 }
+

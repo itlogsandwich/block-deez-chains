@@ -9,10 +9,9 @@ use libp2p::{ noise,
     swarm::SwarmEvent,
 };
 use tokio::sync::mpsc;
-use uuid::Uuid;
-use chrono::Utc;
+use std::sync::{Arc, atomic::AtomicBool, atomic::Ordering};
 
-use crate::block::{BlockState, Block, BlockCandidate, mine_block};
+use crate::block::{BlockState, Block, BlockCandidate, mine_block, mine_trigger};
 use crate::error::Error;
 use crate::p2p::AppBehaviour;
 use crate::p2p::Event as MainEvent;
@@ -60,28 +59,12 @@ async fn main() -> Result<(), Error>
 
     println!("Deploying Blockchain...\n");
     let mut chain = BlockState::new();
-
     chain.create_genesis_block();
 
     let (tx, mut rx) = mpsc::channel::<Block>(100);
+    let mut stop_signal = Arc::new(AtomicBool::new(false)); 
     
-    let miner_tx = tx.clone();
-    let last_block = chain.blocks.last().unwrap().clone();
-    
-    tokio::task::spawn_blocking(move || 
-    {
-            let candidate = BlockCandidate
-            {
-                index: Uuid::new_v4(),
-                timestamp: Utc::now().timestamp(),
-                data: String::from("Test"),
-                previous_hash: last_block.hash, 
-            };
-            
-            let mined = mine_block(candidate);
-            _ = miner_tx.blocking_send(mined);
-    });
-
+    mine_trigger(&chain, tx.clone(), stop_signal.clone());
     loop
     {
         tokio::select!
@@ -95,11 +78,20 @@ async fn main() -> Result<(), Error>
                         if let Ok(block) = serde_json::from_slice(&message.data)
                         {
                             let incoming_block: Block = block;
-                            
-                            if let Err(e) = chain.add_block(incoming_block)
+
+                            match chain.add_block(incoming_block)
                             {
-                                println!("An error has occured! {e}");
-                            }
+                                Ok(()) =>
+                                {
+                                    println!("Mining...");
+                                    stop_signal.store(true, Ordering::SeqCst);
+
+                                    stop_signal = Arc::new(AtomicBool::new(false));
+                                    mine_trigger(&chain, tx.clone(), stop_signal.clone());
+                                },
+                                Err(e) => println!("An error has occured! {e}"),
+                            };
+
                         }
                         else
                         {
@@ -123,10 +115,14 @@ async fn main() -> Result<(), Error>
                 {
                     match chain.add_block(new_block)
                     {
+
                         Ok(()) =>
                         {
                             println!("Block found! Adding...");
                             _ = swarm.behaviour_mut().gossipsub.publish(topic.hash(), serialized_block);
+                            stop_signal.store(true, Ordering::SeqCst);
+                            stop_signal = Arc::new(AtomicBool::new(false));
+                            mine_trigger(&chain, tx.clone(), stop_signal.clone());
                         }
                         Err(e) => println!("An error has occured! {e}"),
                     }
