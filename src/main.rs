@@ -7,6 +7,7 @@ use libp2p::{ noise,
     futures::StreamExt,
     gossipsub::{MessageAuthenticity, IdentTopic},
     swarm::SwarmEvent,
+    mdns,
 };
 use tokio::sync::mpsc;
 use std::sync::{Arc, atomic::AtomicBool, atomic::Ordering};
@@ -33,10 +34,14 @@ async fn main() -> Result<(), Error>
         .with_behaviour(|key| 
         {
             let gossipsub = gossipsub::Behaviour::new(MessageAuthenticity::Signed(key.clone()),gossipsub::Config::default()).expect("Gossipsub failed");
+
+            let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), key.public().to_peer_id()).expect("Mdns failed");
+
             AppBehaviour
             {
                 gossipsub,
                 ping: ping::Behaviour::default(),
+                mdns,
             }
         })?
         .with_swarm_config(|cfg| 
@@ -47,7 +52,7 @@ async fn main() -> Result<(), Error>
     
     let topic = IdentTopic::new("Blockchain");
     swarm.behaviour_mut().gossipsub.subscribe(&topic).expect("Topic subscription failed");
-
+    
     swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse()?)?;
 
     if let Some(addr) = std::env::args().nth(1) 
@@ -97,11 +102,35 @@ async fn main() -> Result<(), Error>
                         {
                             println!("Data lost in transmission...");
                         }
-                        println!("Message Received! {:?}", message.data);
                     },
                     SwarmEvent::Behaviour(MainEvent::Ping(ping_event)) => 
                     { 
                         println!("Pinging! {:?}", ping_event); 
+                    },
+                    SwarmEvent::Behaviour(MainEvent::Mdns(mdns_event)) =>
+                    {
+                        //For future reference, this event contains a vector of (peer_id, multiaddr)
+                        match mdns_event
+                        {
+                            mdns::Event::Discovered(list) => 
+                            {
+                                println!("Discovering...");
+                                for (peer_id, _ ) in list
+                                {
+                                    println!("mDNS discovered a new peer! {peer_id}"); 
+                                    swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
+                                }
+                            }
+                            mdns::Event::Expired(list) => 
+                            {
+                                println!("Expired...");
+                                for (peer_id, _) in list
+                                {
+                                    println!("mDNS peer has expired...{peer_id}");
+                                    swarm.behaviour_mut().gossipsub.remove_explicit_peer(&peer_id);
+                                }
+                            }
+                        }
                     },
 
                     _ => {}
