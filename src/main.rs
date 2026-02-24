@@ -8,14 +8,14 @@ use libp2p::{ noise,
     gossipsub::{MessageAuthenticity, IdentTopic},
     swarm::SwarmEvent,
     mdns,
+    request_response,
 };
 use tokio::sync::mpsc;
 use std::sync::{Arc, atomic::AtomicBool, atomic::Ordering};
 
 use crate::block::{BlockState, Block, BlockCandidate, mine_block, mine_trigger};
 use crate::error::Error;
-use crate::p2p::AppBehaviour;
-use crate::p2p::Event as MainEvent;
+use crate::p2p::{AppBehaviour, Event as MainEvent, BlockRequest, BlockResponse};
 
 mod block;
 mod error;
@@ -36,12 +36,20 @@ async fn main() -> Result<(), Error>
             let gossipsub = gossipsub::Behaviour::new(MessageAuthenticity::Signed(key.clone()),gossipsub::Config::default()).expect("Gossipsub failed");
 
             let mdns = mdns::tokio::Behaviour::new(mdns::Config::default(), key.public().to_peer_id()).expect("Mdns failed");
+            
+            let protocol = [(libp2p::StreamProtocol::new("/blockchain-sync/v1"), request_response::ProtocolSupport::Full)];
 
+            let req_resp = request_response::json::Behaviour::<BlockRequest, BlockResponse>::new(
+                    protocol,
+                    request_response::Config::default(),
+                );
             AppBehaviour
             {
                 gossipsub,
                 ping: ping::Behaviour::default(),
                 mdns,
+                request_response: req_resp,
+
             }
         })?
         .with_swarm_config(|cfg| 
@@ -49,7 +57,7 @@ async fn main() -> Result<(), Error>
             cfg.with_idle_connection_timeout(std::time::Duration::from_secs(u64::MAX))
         })
         .build();
-    
+
     let topic = IdentTopic::new("Blockchain");
     swarm.behaviour_mut().gossipsub.subscribe(&topic).expect("Topic subscription failed");
     

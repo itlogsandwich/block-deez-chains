@@ -80,12 +80,17 @@ impl BlockState
             return Err(Error::OutOfBounds);
         }
 
+        if self.blocks.len() != block.height as usize
+        {
+            return Err(Error::ChainTooShort);
+        }
+
         let previous_hash = &self.blocks.last().unwrap().hash;
 
         self.compare_hash(previous_hash)?;
 
         check_prefix(block.index, &block.data, &block.hash, &block.previous_hash, block.nonce)?;
-        println!("data: {}",&block.data);
+        println!("data: {}", &block.data);
         self.blocks.push(block);
         Ok(())
     }
@@ -170,7 +175,7 @@ pub fn mine_trigger(chain: &BlockState, tx: mpsc::Sender<Block>, stop_signal: Ar
                 timestamp: Utc::now().timestamp(),
                 data: generate_random_data(),
                 previous_hash: last_block.hash,
-                height: last_block.height,
+                height: last_block.height + 1,
             };
             
             if let Some(mined) = mine_block(candidate, stop_signal)

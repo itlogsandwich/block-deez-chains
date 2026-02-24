@@ -5,6 +5,8 @@ pub enum Error
     InvalidHash,
     InvalidPrefix,
     FailedSerialization,
+    ChainTooShort,
+
     NetworkInfallible(String),
     NetworkMultiaddr(String),
     NetworkTransport(String),

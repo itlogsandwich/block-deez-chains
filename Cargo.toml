@@ -16,6 +16,8 @@ libp2p = { version = "0.56.0", features = [
   "mdns",
   "macros",
   "serde",
+  "request-response",
+  "json",
 ] }
 rand = "0.10.0"
 serde = { version = "1.0.228", features = ["derive"] }
