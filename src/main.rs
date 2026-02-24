@@ -97,9 +97,7 @@ async fn main() -> Result<(), Error>
                                 Ok(()) =>
                                 {
                                     println!("Mining...");
-                                    stop_signal.store(true, Ordering::SeqCst);
-
-                                    stop_signal = Arc::new(AtomicBool::new(false));
+                                    stop_signal = signal_control(stop_signal);
                                     mine_trigger(&chain, tx.clone(), stop_signal.clone());
                                 },
                                 Err(e) => println!("An error has occured! {e}"),
@@ -140,6 +138,57 @@ async fn main() -> Result<(), Error>
                             }
                         }
                     },
+                    SwarmEvent::Behaviour(MainEvent::RequestResponse(request_response::Event::Message { peer, message, connection_id})) =>
+                    {
+                        match message 
+                        {
+                            request_response::Message::Request { request, channel, .. } =>
+                            {
+                                match request
+                                {
+                                    BlockRequest::GetBlock(height) =>
+                                    {
+                                        let response = match chain.blocks.get(height as usize)
+                                        {
+                                            Some(block) => BlockResponse::FoundBlock(block.clone()),
+                                            None => BlockResponse::BlockNotFound(height),
+                                        };
+
+                                        swarm.behaviour_mut().request_response.send_response(channel, response).expect("Failed to send response");
+                                    }
+
+                                }
+                            }
+
+                            request_response::Message::Response { response, .. } =>
+                            {
+                                match response
+                                {
+                                    BlockResponse::FoundBlock(block) => 
+                                    {
+                                        println!("Received response, Adding block!");
+                                        match chain.add_block(block)
+                                        {
+                                            Ok(()) =>
+                                            {
+                                                println!("Mining...");
+
+                                                stop_signal = signal_control(stop_signal);
+                                                mine_trigger(&chain, tx.clone(), stop_signal.clone());
+                                            },
+                                            Err(e) => println!("An error has occured! {e}"),
+                                        };
+                                    },
+
+                                    BlockResponse::BlockNotFound(height) =>
+                                    {
+                                        println!("Not found at height {height}");
+                                    }
+                                }
+                            }
+
+                        }
+                    }
 
                     _ => {}
                 }
@@ -157,8 +206,7 @@ async fn main() -> Result<(), Error>
                         {
                             println!("Block found! Adding...");
                             _ = swarm.behaviour_mut().gossipsub.publish(topic.hash(), serialized_block);
-                            stop_signal.store(true, Ordering::SeqCst);
-                            stop_signal = Arc::new(AtomicBool::new(false));
+                            stop_signal = signal_control(stop_signal);
                             mine_trigger(&chain, tx.clone(), stop_signal.clone());
                         }
                         Err(e) => println!("An error has occured! {e}"),
@@ -172,4 +220,13 @@ async fn main() -> Result<(), Error>
         }
     }
     Ok(())
+}
+
+fn signal_control(mut stop_signal: Arc<AtomicBool>) -> Arc<AtomicBool>
+{
+    stop_signal.store(true, Ordering::SeqCst);
+
+    stop_signal = Arc::new(AtomicBool::new(false));
+    
+    stop_signal
 }
