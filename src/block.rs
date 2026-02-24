@@ -6,6 +6,7 @@ use sha2::{Sha256, Digest};
 use uuid::Uuid;
 use tokio::sync::mpsc;
 use std::sync::{Arc, atomic::AtomicBool, atomic::Ordering};
+use rand::prelude::*;
 
 const DEFAULT_PREFIX: &str = "6767";
 
@@ -20,6 +21,7 @@ pub struct Block
     pub previous_hash: String,
     pub hash: String,
     pub nonce: u64,
+    pub height: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -29,6 +31,7 @@ pub struct BlockCandidate
     pub timestamp: i64,
     pub data: String,
     pub previous_hash: String,
+    pub height: u64,
 }
 
 impl std::fmt::Display for Block
@@ -64,6 +67,7 @@ impl BlockState
             previous_hash: String::from("0"),
             hash: DEFAULT_PREFIX.to_owned() + "00000000000000000000000000000000000000000000000000000000000",
             nonce: 3694,
+            height: 0,
         };
     
         self.blocks.push(genesis_block)
@@ -81,7 +85,7 @@ impl BlockState
         self.compare_hash(previous_hash)?;
 
         check_prefix(block.index, &block.data, &block.hash, &block.previous_hash, block.nonce)?;
-
+        println!("data: {}",&block.data);
         self.blocks.push(block);
         Ok(())
     }
@@ -95,7 +99,6 @@ impl BlockState
 
         Ok(())
     }
-
 }
 
 pub fn check_prefix(index: Uuid, data: &str, hash: &str, previous_hash: &str, nonce: u64) -> BlockResult<()>
@@ -147,6 +150,7 @@ pub fn mine_block(block_candidate: BlockCandidate, stop_signal: Arc<AtomicBool>)
                 previous_hash: block_candidate.previous_hash.to_string(),
                 hash,
                 nonce,
+                height: block_candidate.height,
             });
         }            
         nonce += 1;
@@ -164,8 +168,9 @@ pub fn mine_trigger(chain: &BlockState, tx: mpsc::Sender<Block>, stop_signal: Ar
             {
                 index: Uuid::new_v4(),
                 timestamp: Utc::now().timestamp(),
-                data: String::from("Test"),
-                previous_hash: last_block.hash, 
+                data: generate_random_data(),
+                previous_hash: last_block.hash,
+                height: last_block.height,
             };
             
             if let Some(mined) = mine_block(candidate, stop_signal)
@@ -189,4 +194,19 @@ fn calculate_hash(index: Uuid, data: &str, previous_hash: &str, nonce: u64) -> S
 
     hex::encode(hash)
 }
+
+fn generate_random_data() -> String
+{   
+    let mut rng = rand::rng();
+    
+    let mut word = String::with_capacity(20);
+
+    for _ in 0..19
+    {
+        word.push(rng.sample(rand::distr::Alphanumeric) as char );
+    }
+    
+    word
+}
+
 
