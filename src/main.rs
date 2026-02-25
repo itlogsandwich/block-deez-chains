@@ -13,7 +13,7 @@ use libp2p::{ noise,
 use tokio::sync::{ mpsc, RwLock };
 use std::sync::{Arc, atomic::AtomicBool, atomic::Ordering};
 
-use crate::block::{BlockState, Block, BlockCandidate, mine_block, mine_trigger};
+use crate::block::{ BlockState, Block, mine_trigger };
 use crate::error::Error;
 use crate::p2p::{AppBehaviour, Event as MainEvent, BlockRequest, BlockResponse};
 
@@ -91,7 +91,10 @@ async fn main() -> Result<(), Error>
         {
             chain_lock.create_genesis_block();
 
-            chain_lock.save_to_file(FILE_PATH);
+            if let Err(e) = chain_lock.save_to_file(FILE_PATH)
+            {
+                println!("Failed to save file! {e}");
+            }
         }
     }
 
@@ -121,7 +124,7 @@ async fn main() -> Result<(), Error>
                                 
                             let chain_read = chain.read().await;
                                
-                            if let Err(e) = chain_read.compare_hash(&incoming_block.hash)
+                            if let Err(e) = chain_read.compare_hash(&incoming_block.previous_hash)
                             {
                                 println!("{e}");
                                 drop(chain_read);
@@ -147,7 +150,7 @@ async fn main() -> Result<(), Error>
 
                                     if let Err(e) = chain_lock.save_to_file(FILE_PATH)
                                     {
-                                        println!("Failed to save file");    
+                                        println!("Failed to save file {e}");    
                                     }
 
                                     stop_signal = signal_control(stop_signal);
@@ -287,7 +290,7 @@ async fn main() -> Result<(), Error>
 
                             if let Err(e) = chain_lock.save_to_file(FILE_PATH)
                             {
-                                println!("Failed to save file");    
+                                println!("Failed to save file {e}");    
                             }
 
                             stop_signal = signal_control(stop_signal);

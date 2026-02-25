@@ -40,7 +40,7 @@ impl From<std::convert::Infallible> for Error
 
 impl From<std::io::Error> for Error
 {
-    fn from(err: std::io::Error) -> Self
+    fn from(_: std::io::Error) -> Self
     {
         Self::IOFailure
     }

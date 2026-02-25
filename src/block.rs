@@ -7,7 +7,7 @@ use uuid::Uuid;
 use tokio::sync::mpsc;
 use std::sync::{Arc, atomic::AtomicBool, atomic::Ordering};
 use rand::prelude::*;
-use std::fs::{ read, write, File };
+use std::fs::{ write, File };
 
 const DEFAULT_PREFIX: &str = "6767";
 type BlockResult<T> = Result<T, Error>;
@@ -71,15 +71,15 @@ impl BlockState
 
         if let Ok(serialized) = std::fs::read_to_string(path)
         {
-            let deserialized: BlockState = serde_json::from_str(&serialized).expect("Failed to deserialized");
+            let deserialized: BlockState = serde_json::from_str(&serialized)?;
 
-            return Ok(deserialized);
+            Ok(deserialized)
             
         }
         else
-        {    
-            File::create(path);
-            return Err(Error::FileNotFound);
+        {   
+            _ = File::create(path);
+            Err(Error::FileNotFound)
         }
 
     }
@@ -159,7 +159,7 @@ pub fn mine_block(block_candidate: BlockCandidate, stop_signal: Arc<AtomicBool>)
 
     loop
     {
-        if nonce % 10000 == 0 && stop_signal.load(Ordering::Relaxed)
+        if nonce % 10000 == 0 && stop_signal.load(Ordering::SeqCst)
         {
             println!("Nonce: {nonce}");
             return None;
