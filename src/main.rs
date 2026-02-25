@@ -100,7 +100,20 @@ async fn main() -> Result<(), Error>
                                     stop_signal = signal_control(stop_signal);
                                     mine_trigger(&chain, tx.clone(), stop_signal.clone());
                                 },
-                                Err(e) => println!("An error has occured! {e}"),
+                                Err(e) =>
+                                {
+                                    println!("An error has occured! {e}");
+
+                                    if let Some(sender_peer_id) = message.source
+                                    {
+                                        let missing_height = chain.blocks.len() as u64;
+
+                                        swarm.behaviour_mut().request_response.send_request(
+                                                &sender_peer_id, 
+                                                BlockRequest::GetBlock(missing_height),
+                                            );
+                                    }
+                                }
                             };
 
                         }
@@ -175,6 +188,10 @@ async fn main() -> Result<(), Error>
 
                                                 stop_signal = signal_control(stop_signal);
                                                 mine_trigger(&chain, tx.clone(), stop_signal.clone());
+
+                                                let next_height = chain.blocks.len() as u64;
+
+                                                swarm.behaviour_mut().request_response.send_request(&peer, BlockRequest::GetBlock(next_height));
                                             },
                                             Err(e) => println!("An error has occured! {e}"),
                                         };
