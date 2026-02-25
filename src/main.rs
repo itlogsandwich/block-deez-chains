@@ -10,7 +10,7 @@ use libp2p::{ noise,
     mdns,
     request_response,
 };
-use tokio::sync::mpsc;
+use tokio::sync::{ mpsc, RwLock };
 use std::sync::{Arc, atomic::AtomicBool, atomic::Ordering};
 
 use crate::block::{BlockState, Block, BlockCandidate, mine_block, mine_trigger};
@@ -24,8 +24,7 @@ mod p2p;
 #[tokio::main]
 async fn main() -> Result<(), Error>
 {
-    let mut swarm = libp2p::SwarmBuilder::with_new_identity()
-        .with_tokio()
+    let mut swarm = libp2p::SwarmBuilder::with_new_identity() .with_tokio()
         .with_tcp(
             tcp::Config::default(),
             noise::Config::new,
@@ -71,13 +70,20 @@ async fn main() -> Result<(), Error>
     }
 
     println!("Deploying Blockchain...\n");
-    let mut chain = BlockState::new();
-    chain.create_genesis_block();
+    let chain = Arc::new(RwLock::new(BlockState::new()));
+
+    chain.write().await.create_genesis_block();
 
     let (tx, mut rx) = mpsc::channel::<Block>(100);
     let mut stop_signal = Arc::new(AtomicBool::new(false)); 
-    
-    mine_trigger(&chain, tx.clone(), stop_signal.clone());
+
+    let chain_lock = chain.write().await;
+
+    let last_block = chain_lock.blocks.last().unwrap();
+
+    mine_trigger(last_block.clone(), tx.clone(), stop_signal.clone());
+    drop(chain_lock);
+
     loop
     {
         tokio::select!
@@ -91,14 +97,36 @@ async fn main() -> Result<(), Error>
                         if let Ok(block) = serde_json::from_slice(&message.data)
                         {
                             let incoming_block: Block = block;
+                                
+                            let chain_read = chain.read().await;
+                               
+                            if let Err(e) = chain_read.compare_hash(&incoming_block.hash)
+                            {
+                                println!("{e}");
+                                drop(chain_read);
 
-                            match chain.add_block(incoming_block)
+                                let chain_lock = chain.write().await;
+                                let missing_height = chain_lock.blocks.len() as u64;
+                                
+                                drop(chain_lock);
+
+                                swarm.behaviour_mut().request_response.send_request(
+                                        &message.source.unwrap(), 
+                                        BlockRequest::GetBlock(missing_height),
+                                    );
+                            }
+
+                            let mut chain_lock = chain.write().await;
+
+                            match chain_lock.add_block(incoming_block)
                             {
                                 Ok(()) =>
                                 {
                                     println!("Mining...");
                                     stop_signal = signal_control(stop_signal);
-                                    mine_trigger(&chain, tx.clone(), stop_signal.clone());
+
+                                    let last_block = chain_lock.blocks.last().unwrap();
+                                    mine_trigger(last_block.clone(), tx.clone(), stop_signal.clone());
                                 },
                                 Err(e) =>
                                 {
@@ -106,7 +134,7 @@ async fn main() -> Result<(), Error>
 
                                     if let Some(sender_peer_id) = message.source
                                     {
-                                        let missing_height = chain.blocks.len() as u64;
+                                        let missing_height = chain_lock.blocks.len() as u64;
 
                                         swarm.behaviour_mut().request_response.send_request(
                                                 &sender_peer_id, 
@@ -151,7 +179,7 @@ async fn main() -> Result<(), Error>
                             }
                         }
                     },
-                    SwarmEvent::Behaviour(MainEvent::RequestResponse(request_response::Event::Message { peer, message, connection_id})) =>
+                    SwarmEvent::Behaviour(MainEvent::RequestResponse(request_response::Event::Message { peer, message, .. })) =>
                     {
                         match message 
                         {
@@ -160,8 +188,10 @@ async fn main() -> Result<(), Error>
                                 match request
                                 {
                                     BlockRequest::GetBlock(height) =>
-                                    {
-                                        let response = match chain.blocks.get(height as usize)
+                                    { 
+                                        let chain_lock = chain.read().await;
+
+                                        let response = match chain_lock.blocks.get(height as usize)
                                         {
                                             Some(block) => BlockResponse::FoundBlock(block.clone()),
                                             None => BlockResponse::BlockNotFound(height),
@@ -180,16 +210,19 @@ async fn main() -> Result<(), Error>
                                     BlockResponse::FoundBlock(block) => 
                                     {
                                         println!("Received response, Adding block!");
-                                        match chain.add_block(block)
+                                        let mut chain_lock = chain.write().await;
+
+                                        match chain_lock.add_block(block)
                                         {
                                             Ok(()) =>
                                             {
                                                 println!("Mining...");
 
                                                 stop_signal = signal_control(stop_signal);
-                                                mine_trigger(&chain, tx.clone(), stop_signal.clone());
+                                                let last_block = chain_lock.blocks.last().unwrap();
+                                                mine_trigger(last_block.clone(), tx.clone(), stop_signal.clone());
 
-                                                let next_height = chain.blocks.len() as u64;
+                                                let next_height = chain_lock.blocks.len() as u64;
 
                                                 swarm.behaviour_mut().request_response.send_request(&peer, BlockRequest::GetBlock(next_height));
                                             },
@@ -216,7 +249,9 @@ async fn main() -> Result<(), Error>
                 
                 if let Ok(serialized_block) = serde_json::to_vec(&new_block)
                 {
-                    match chain.add_block(new_block)
+
+                    let mut chain_lock = chain.write().await;
+                    match chain_lock.add_block(new_block)
                     {
 
                         Ok(()) =>
@@ -224,7 +259,8 @@ async fn main() -> Result<(), Error>
                             println!("Block found! Adding...");
                             _ = swarm.behaviour_mut().gossipsub.publish(topic.hash(), serialized_block);
                             stop_signal = signal_control(stop_signal);
-                            mine_trigger(&chain, tx.clone(), stop_signal.clone());
+                            let last_block = chain_lock.blocks.last().unwrap();
+                            mine_trigger(last_block.clone(), tx.clone(), stop_signal.clone());
                         }
                         Err(e) => println!("An error has occured! {e}"),
                     }

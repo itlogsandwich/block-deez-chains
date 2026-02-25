@@ -2,7 +2,7 @@ use crate::error::Error;
 use std::fmt;
 use serde::{ Serialize, Deserialize };
 use chrono::Utc;
-use sha2::{Sha256, Digest};
+use sha2::{ Sha256, Digest };
 use uuid::Uuid;
 use tokio::sync::mpsc;
 use std::sync::{Arc, atomic::AtomicBool, atomic::Ordering};
@@ -162,10 +162,9 @@ pub fn mine_block(block_candidate: BlockCandidate, stop_signal: Arc<AtomicBool>)
     }
 }
 
-pub fn mine_trigger(chain: &BlockState, tx: mpsc::Sender<Block>, stop_signal: Arc<AtomicBool>)
+pub fn mine_trigger(last_block: Block, tx: mpsc::Sender<Block>, stop_signal: Arc<AtomicBool>)
 {
     let miner_tx = tx.clone();
-    let last_block = chain.blocks.last().unwrap().clone();
 
     tokio::task::spawn_blocking(move || 
     {
