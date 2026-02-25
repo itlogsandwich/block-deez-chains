@@ -6,6 +6,8 @@ pub enum Error
     InvalidPrefix,
     FailedSerialization,
     ChainTooShort,
+    FileNotFound,
+    IOFailure,
 
     NetworkInfallible(String),
     NetworkMultiaddr(String),
@@ -33,6 +35,14 @@ impl From<std::convert::Infallible> for Error
     fn from(err: std::convert::Infallible) -> Self 
     {
         Self::NetworkInfallible(err.to_string())
+    }
+}
+
+impl From<std::io::Error> for Error
+{
+    fn from(err: std::io::Error) -> Self
+    {
+        Self::IOFailure
     }
 }
 

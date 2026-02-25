@@ -7,9 +7,9 @@ use uuid::Uuid;
 use tokio::sync::mpsc;
 use std::sync::{Arc, atomic::AtomicBool, atomic::Ordering};
 use rand::prelude::*;
+use std::fs::{ read, write, File };
 
 const DEFAULT_PREFIX: &str = "6767";
-
 type BlockResult<T> = Result<T, Error>;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -42,6 +42,7 @@ impl std::fmt::Display for Block
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct BlockState
 {
     pub blocks: Vec<Block>,
@@ -55,6 +56,32 @@ impl BlockState
         {
             blocks: Vec::new()
         }
+    }
+
+    pub fn save_to_file(&self, path: &str) -> BlockResult<()>
+    {
+        let serialized = serde_json::to_string_pretty(&self);
+
+        write(path, serialized?.as_bytes())?;
+        Ok(())
+    }
+
+    pub fn load_file(path: &str) -> BlockResult<Self>
+    {
+
+        if let Ok(serialized) = std::fs::read_to_string(path)
+        {
+            let deserialized: BlockState = serde_json::from_str(&serialized).expect("Failed to deserialized");
+
+            return Ok(deserialized);
+            
+        }
+        else
+        {    
+            File::create(path);
+            return Err(Error::FileNotFound);
+        }
+
     }
 
     pub fn create_genesis_block(&mut self)

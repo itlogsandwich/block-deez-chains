@@ -21,6 +21,8 @@ mod block;
 mod error;
 mod p2p;
 
+const FILE_PATH: &str = "blockchain.json";
+
 #[tokio::main]
 async fn main() -> Result<(), Error>
 {
@@ -70,9 +72,28 @@ async fn main() -> Result<(), Error>
     }
 
     println!("Deploying Blockchain...\n");
-    let chain = Arc::new(RwLock::new(BlockState::new()));
+    let find_chain = match BlockState::load_file(FILE_PATH)
+    {
+        Ok(k) => k,
+        Err(e) =>
+        {
+            println!("File error! {}", e);
+            BlockState::new()
+        }
+    };
 
-    chain.write().await.create_genesis_block();
+    let chain = Arc::new(RwLock::new(find_chain));
+
+    {
+        let mut chain_lock = chain.write().await;
+
+        if chain_lock.blocks.is_empty()
+        {
+            chain_lock.create_genesis_block();
+
+            chain_lock.save_to_file(FILE_PATH);
+        }
+    }
 
     let (tx, mut rx) = mpsc::channel::<Block>(100);
     let mut stop_signal = Arc::new(AtomicBool::new(false)); 
@@ -123,8 +144,13 @@ async fn main() -> Result<(), Error>
                                 Ok(()) =>
                                 {
                                     println!("Mining...");
-                                    stop_signal = signal_control(stop_signal);
 
+                                    if let Err(e) = chain_lock.save_to_file(FILE_PATH)
+                                    {
+                                        println!("Failed to save file");    
+                                    }
+
+                                    stop_signal = signal_control(stop_signal);
                                     let last_block = chain_lock.blocks.last().unwrap();
                                     mine_trigger(last_block.clone(), tx.clone(), stop_signal.clone());
                                 },
@@ -258,6 +284,12 @@ async fn main() -> Result<(), Error>
                         {
                             println!("Block found! Adding...");
                             _ = swarm.behaviour_mut().gossipsub.publish(topic.hash(), serialized_block);
+
+                            if let Err(e) = chain_lock.save_to_file(FILE_PATH)
+                            {
+                                println!("Failed to save file");    
+                            }
+
                             stop_signal = signal_control(stop_signal);
                             let last_block = chain_lock.blocks.last().unwrap();
                             mine_trigger(last_block.clone(), tx.clone(), stop_signal.clone());
